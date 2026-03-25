@@ -1,0 +1,14 @@
+### 測試 1: 基礎 GET 請求 (驗證連線)
+GET http://localhost:8081/api/transactions
+
+###
+### 測試 2: 上傳 CSV 檔案 (核心功能)
+POST http://localhost:8081/api/transactions/upload
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="test_transactions.csv"
+Content-Type: text/csv
+
+< ./test_transactions.csv
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
