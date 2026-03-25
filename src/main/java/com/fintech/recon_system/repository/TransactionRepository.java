@@ -19,6 +19,13 @@ import java.util.List;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
+
+    @Query("SELECT t.transactionType, COUNT(t) FROM Transaction t GROUP BY t.transactionType")
+    List<Object[]> countTransactionsByType();
+
+    @Query("SELECT t.amlAlert, COUNT(t) FROM Transaction t GROUP BY t.amlAlert")
+    List<Object[]> countByAmlAlert();
+
     // 1. Basic Count Methods
     long countByAmlAlert(String amlAlert);
     

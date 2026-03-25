@@ -87,6 +87,17 @@ public class TransactionWebController {
         model.addAttribute("pendingCount", repository.countByStatus("PENDING_REVIEW"));
         model.addAttribute("auditLogs", auditLogRepository.findTop10ByOrderByTimestampDesc());
 
+        // Step 6:(Chart Data)
+        // (Pie Chart)
+        List<Object[]> typeStats = repository.countTransactionsByType();
+        model.addAttribute("typeLabels", typeStats.stream().map(s -> s[0]).toList());
+        model.addAttribute("typeData", typeStats.stream().map(s -> s[1]).toList());
+
+        // (Bar Chart)
+        List<Object[]> riskStats = repository.countByAmlAlert();
+        model.addAttribute("riskLabels", riskStats.stream().map(s -> s[0]).toList());
+        model.addAttribute("riskData", riskStats.stream().map(s -> s[1]).toList());
+
         return "index";
     }
 
