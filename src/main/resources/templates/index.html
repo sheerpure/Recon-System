@@ -3,14 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <title>Recon-System | Enterprise Dashboard</title>
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
     <link rel="stylesheet" th:href="@{/css/style.css}">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .animate-pulse-fast { animation: pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+    </style>
 </head>
 
-<body class="p-10">
+<body class="bg-slate-50 p-10">
+
     <div class="max-w-6xl mx-auto flex space-x-6 mb-6 border-b border-slate-200">
         <a th:href="@{/(filter=null)}" 
            th:class="${currentFilter == null ? 'border-b-2 border-slate-900 text-slate-900' : 'text-slate-500'} + ' pb-2 px-1 text-sm font-semibold transition-all'">
@@ -62,35 +66,37 @@
         </div>
     </div>
 
-    <div class="max-w-6xl mx-auto">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+    <div class="max-w-6xl mx-auto mb-6">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div>
                 <h2 class="text-2xl font-black text-slate-900 tracking-tight">Transaction Monitor</h2>
                 <p class="text-sm text-slate-500 font-medium">即時管理與合規審核系統</p>
             </div>
 
-            <div class="flex items-center gap-3">
-                <a th:href="@{/api/transactions/export(filter=${currentFilter})}" 
-                   class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm">
-                   Export Excel
+            <div class="flex flex-wrap items-center gap-3">
+                <a th:href="@{/api/transactions/export(filter=${currentFilter}, refId=${refId}, minAmount=${minAmount}, maxAmount=${maxAmount})}" 
+                   class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center">
+                    <span class="mr-2">📊</span> Export Excel
                 </a>
+
+                <button onclick="viewHtmlReport()" 
+                        class="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md flex items-center">
+                    <span class="mr-2">📄</span> View Risk Report
+                </button>
+
+                <button onclick="document.getElementById('fileInput').click()" 
+                        class="bg-violet-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-violet-700 transition-all shadow-md flex items-center">
+                    <span class="mr-2">📤</span> Upload Financial Log
+                </button>
                 
-                <div sec:authorize="hasRole('ADMIN')" class="flex items-center">
-                    <button id="uploadBtn" 
-                            class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-md active:scale-95">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                        </svg>
-                        <span id="uploadBtnText">Upload Financial Log</span>
-                        <div id="uploadSpinner" class="hidden animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                    </button>
-                    <input type="file" id="csvFileInput" class="hidden" accept=".csv">
-                </div>
-                
-                <div class="flex items-center gap-3">
+                <input type="file" id="fileInput" class="hidden" onchange="uploadFile(this)">
+
+                <div class="w-px h-8 bg-slate-100 mx-1 hidden md:block"></div>
+
+                <div class="flex items-center gap-2">
                     <button onclick="window.location.reload()" 
-                            class="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-slate-100 bg-white shadow-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            class="p-2.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all border border-slate-100 bg-white shadow-sm" title="Refresh Page">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </button>
@@ -98,7 +104,7 @@
                     <form th:action="@{/logout}" method="post" class="inline m-0">
                         <button type="submit" 
                                 class="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-slate-100 bg-white shadow-sm flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                             </svg>
                             <span class="text-xs font-bold">Logout</span>
@@ -107,7 +113,9 @@
                 </div>
             </div>
         </div>
+    </div>
 
+    <div class="max-w-6xl mx-auto">
         <form th:action="@{/}" method="get" class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-wrap items-end gap-4">
             <input type="hidden" name="filter" th:value="${currentFilter}">
             <div class="flex-1 min-w-[200px]">
@@ -122,8 +130,8 @@
                 <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Max Amount</label>
                 <input type="number" name="maxAmount" th:value="${maxAmount}" class="w-full px-3 py-2 border border-slate-200 rounded-md text-sm">
             </div>
-            <button type="submit" class="bg-slate-100 text-slate-700 px-4 py-2 rounded-md text-sm font-bold hover:bg-slate-200 transition-all">Apply Search</button>
-            <a th:href="@{/(filter=${currentFilter})}" class="text-xs text-slate-400 hover:underline mb-2">Clear</a>
+            <button type="submit" class="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-slate-800 transition-all shadow-sm">Apply Search</button>
+            <a th:href="@{/(filter=${currentFilter})}" class="text-xs text-slate-400 hover:underline mb-2">Clear All</a>
         </form>
 
         <div id="batchActions" class="hidden mb-4 p-3 bg-slate-900 rounded-xl flex items-center justify-between shadow-lg">
@@ -153,8 +161,10 @@
                     <tr th:each="tx : ${transactions}" class="hover:bg-slate-50/50 transition-colors">
                         <td class="px-6 py-4"><input type="checkbox" th:value="${tx.id}" class="tx-checkbox rounded border-slate-300"></td>
                         <td class="px-6 py-4 font-bold text-slate-900" th:text="${tx.referenceId}">ID</td>
-                        <td class="px-6 py-4"><span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-bold" th:text="${tx.transactionType}">TYPE</span></td>
-                        <td class="px-6 py-4 text-right font-mono font-bold" th:text="${#numbers.formatCurrency(tx.amount)}">$0.00</td>
+                        <td class="px-6 py-4">
+                            <span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-bold" th:text="${tx.transactionType}">TYPE</span>
+                        </td>
+                        <td class="px-6 py-4 text-right font-mono font-bold text-slate-700" th:text="${#numbers.formatCurrency(tx.amount)}">$0.00</td>
                         <td class="px-6 py-4 text-center">
                             <span th:class="${tx.status == 'PENDING_REVIEW' ? 'bg-amber-100 text-amber-700' : tx.status == 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'} + ' px-2.5 py-1 rounded-full text-[10px] font-black uppercase'" th:text="${tx.status}">STATUS</span>
                         </td>
@@ -167,11 +177,10 @@
                         </td>
                         <td class="px-6 py-4 text-right">
                             <div th:if="${tx.status == 'PENDING_REVIEW'}" class="flex justify-end space-x-1" sec:authorize="hasRole('ADMIN')">
-                                <button th:onclick="'handleAction(' + ${tx.id} + ', \'PROCESSED\')'" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></button>
-                                <button th:onclick="'handleAction(' + ${tx.id} + ', \'REJECTED\')'" class="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                                <button th:onclick="'handleAction(' + ${tx.id} + ', \'PROCESSED\')'" class="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors" title="Approve"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></button>
+                                <button th:onclick="'handleAction(' + ${tx.id} + ', \'REJECTED\')'" class="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors" title="Reject"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                             </div>
                             <span th:if="${tx.status != 'PENDING_REVIEW'}" class="text-slate-400 text-[10px] italic">Audited</span>
-                            <span th:if="${tx.status == 'PENDING_REVIEW'}" sec:authorize="hasRole('USER')" class="text-slate-400 text-[10px] italic">Read Only</span>
                         </td>
                     </tr>
                 </tbody>
@@ -218,6 +227,10 @@
         window.typeData = /*[[${typeData}]]*/ [];
         window.riskLabels = /*[[${riskLabels}]]*/ [];
         window.riskData = /*[[${riskData}]]*/ [];
+        
+        function viewHtmlReport() {
+            window.open('/api/transactions/report/html', '_blank');
+        }
         /*]]>*/
     </script>
     <script th:src="@{/js/dashboard.js}"></script>

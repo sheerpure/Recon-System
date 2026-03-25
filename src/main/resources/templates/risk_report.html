@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Automated AML Risk Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        /* PDF and Print optimization */
+        @media print {
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+        .page-break { page-break-after: always; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+<div class="container mx_auto p-6 max-w-7xl">
+
+    <div class="flex items-center justify-between border-b pb-6 mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900">
+                AML Risk Analysis Report
+            </h1>
+            <p class="text-sm text-gray-500 mt-2">
+                Automated Reconciliation & Audit Trail
+            </p>
+            <p class="text-sm text-gray-500 mt-1">
+                Generated At: <span th:text="${#temporals.format(generatedAt, 'yyyy-MM-dd HH:mm')}">2026-03-25 22:00</span>
+            </p>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <div class="bg-red-100 text-red-800 text-xs font-semibold px-4 py-2 rounded-full">
+                REPORT_ID: <span th:text="${reportId}">R10001</span>
+            </div>
+            <span th:if="${#lists.isEmpty(highRiskTransactions)}" 
+                  class="px-4 py-2 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+                STATUS: CLEAN
+            </span>
+            <span th:unless="${#lists.isEmpty(highRiskTransactions)}" 
+                  class="px-4 py-2 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                STATUS: PENDING_REVIEW
+            </span>
+            
+            <button onclick="window.print()" class="no-print bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                Print/Export PDF
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-3 gap-6 mb-8">
+        <div class="bg-white p-6 rounded-lg shadow-sm border">
+            <p class="text-sm font-medium text-gray-500">Total Transactions Audited</p>
+            <p class="text-3xl font-bold text-gray-900" th:text="${totalAudited}">150</p>
+        </div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border">
+            <p class="text-sm font-medium text-gray-500">High Risk Alerts</p>
+            <p class="text-3xl font-bold text-red-600" th:text="${highRiskTransactions.size()}">14</p>
+        </div>
+        <div class="bg-white p-6 rounded-lg shadow-sm border">
+            <p class="text-sm font-medium text-gray-500">Risk-Related Amount (USD)</p>
+            <p class="text-3xl font-bold text-gray-900" 
+               th:text="${#numbers.formatCurrency(totalRiskAmount)}">$6,000,000</p>
+        </div>
+    </div>
+
+    <div th:if="${not #lists.isEmpty(highRiskTransactions)}" class="mb-8">
+        <h2 class="text-2xl font-semibold mb-4 text-gray-800">High Risk Transactions Detail</h2>
+        
+        <div class="bg-white rounded-lg shadow-sm border overflow-x_auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-gray-100 text-xs text-gray-600 uppercase">
+                    <tr>
+                        <th class="px-6 py-4">Ref ID</th>
+                        <th class="px-6 py-4">Type</th>
+                        <th class="px-6 py-4">Amount</th>
+                        <th class="px-6 py-4">AML Alert</th>
+                        <th class="px-6 py-4">Status</th>
+                        <th class="px-6 py-4">Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="tx : ${highRiskTransactions}" class="border-b hover:bg-gray-50">
+                        <td class="px-6 py-4 font-medium text-gray-800" th:text="${tx.referenceId}">C3009</td>
+                        <td class="px-6 py-4" th:text="${tx.transactionType}">TRANSFER</td>
+                        <td class="px-6 py-4 font-bold text-red-600" 
+                            th:text="${#numbers.formatCurrency(tx.amount)}">$460,024.90</td>
+                        
+                        <td class="px-6 py-4">
+                            <span th:if="${tx.amlAlert == 'FRAUD_DETECTED'}" 
+                                  class="bg-red-100 text-red-800 text-xs px-2 py-1 rounded">DETECTED</span>
+                            <span th:if="${tx.amlAlert == 'CLEAN'}" 
+                                  class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">CLEAN</span>
+                        </td>
+                        
+                        <td class="px-6 py-4">
+                            <span th:if="${tx.status == 'PENDING_REVIEW'}" class="text-yellow-600">Pending</span>
+                            <span th:if="${tx.status == 'APPROVED'}" class="text-green-600">Approved</span>
+                        </td>
+                        <td class="px-6 py-4" th:text="${tx.createdAt}">2026-03-25</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div th:unless="${not #lists.isEmpty(highRiskTransactions)}" class="bg-green-50 border-l-4 border-green-500 p-6 rounded-lg mb-8">
+        <h3 class="text-xl font-bold text-green-800">✅ All Clear</h3>
+        <p class="text-green-700 mt-2">No transaction matches the 'High Risk' pattern (TRANSFER > 200k or CASH_OUT > 100k) within this audited batch.</p>
+    </div>
+
+    <div class="text-center text-xs text-gray-400 mt-12 border-t pt-8">
+        <p>© 2026 Recon System Inc. (Financial Integrity MVP)</p>
+        <p class="mt-2">This report is an automated diagnostic output and does not constitute a legal confirmation. Compliance officers should review and sign off on high-risk cases.</p>
+    </div>
+
+</div>
+
+</body>
+</html>

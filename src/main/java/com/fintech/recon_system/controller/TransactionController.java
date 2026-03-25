@@ -1,11 +1,14 @@
 package com.fintech.recon_system.controller;
 
 import java.util.List;
+import java.math.BigDecimal;
 import java.io.ByteArrayInputStream; 
+import java.time.LocalDateTime;
+
 import org.springframework.core.io.InputStreamResource; 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;   
+import org.springframework.http.MediaType;    
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -14,25 +17,27 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.ui.Model;
+import org.springframework.stereotype.Controller; 
 
 import com.fintech.recon_system.model.Transaction;
 import com.fintech.recon_system.model.AuditLog;
 import com.fintech.recon_system.repository.TransactionRepository;
 import com.fintech.recon_system.repository.AuditLogRepository;
 import com.fintech.recon_system.service.ReconciliationService;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.fintech.recon_system.util.CSVHelper;
+import com.fintech.recon_system.util.TransactionSpecification; 
 
 import lombok.extern.slf4j.Slf4j;
 import lombok.Data;
 
 /**
- * REST Controller for financial transactions.
- * Supports Asynchronous Ingestion, Server-side Pagination, Audit Logging, and Batch Processing.
+ * Enhanced Controller for Financial Transactions.
+ * Supports Dynamic Search, Batch Processing, Excel Export, and HTML Risk Reporting.
  */
 @Slf4j
-@RestController
+@Controller // Changed to @Controller to support HTML view rendering
 @RequestMapping("/api/transactions")
 @CrossOrigin(origins = "*")
 public class TransactionController {
@@ -50,142 +55,121 @@ public class TransactionController {
     }
 
     /**
-     * Fetches transactions with pagination support.
-     * @param page Zero-based page index.
-     * @param size Number of records per page.
-     * @return Paginated transaction data sorted by newest first.
+     *[Advanced Search] Returns JSON data with pagination.
      */
     @GetMapping
-    public Page<Transaction> getRecentTransactions(
+    @ResponseBody // Must use @ResponseBody because the class is now @Controller
+    public Page<Transaction> getFilteredTransactions(
+            @RequestParam(required = false) String referenceId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) BigDecimal minAmount,
+            @RequestParam(required = false) BigDecimal maxAmount,
+            @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return repository.findAll(pageable);
+        Specification<Transaction> spec = TransactionSpecification.filterTransactions(
+                referenceId, type, minAmount, maxAmount, status);
+                
+        return repository.findAll(spec, pageable);
     }
 
     /**
-     * Handles asynchronous large-scale CSV ingestion.
-     * Returns immediately while processing continues in the background.
+     * [CSV Upload] Processes large files in streaming mode.
      */
     @PostMapping("/upload")
+    @ResponseBody
     public ResponseEntity<?> uploadKaggleData(@RequestParam("file") MultipartFile file) {
-        log.info("📥 [STREAMING START] Processing large CSV: {}", file.getOriginalFilename());
-        
         try {
-            // Clear old data before ingestion to achieve "overwrite" effect
             repository.deleteAll(); 
             auditLogRepository.deleteAll();
-
-            // Call the streaming parser
             CSVHelper.parseAndSave(file.getInputStream(), repository);
-            
-            return ResponseEntity.status(HttpStatus.OK).body("Large dataset uploaded and processed successfully.");
+            return ResponseEntity.ok("Dataset processed successfully.");
         } catch (Exception e) {
-            log.error("❌ Critical Ingestion Failure: ", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Ingestion failed: " + e.getMessage());
+            log.error("❌ Ingestion Failure: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Upload failed: " + e.getMessage());
         }
     }
 
     /**
-     * Updates a single transaction status and records the action in Audit Logs.
+     * [HTML Risk Report] Renders a professional web-based audit report.
+     * Accessible via: GET /api/transactions/report/html
      */
-    @PatchMapping("/{id}/status")
-    @Transactional 
-    public ResponseEntity<Transaction> updateStatus(
-            @PathVariable Long id, 
-            @RequestParam String newStatus) {
-    
-        return repository.findById(id).map(tx -> {
-            String oldStatus = tx.getStatus();
-            tx.setStatus(newStatus);
-            
-            if ("PROCESSED".equals(newStatus)) {
-                tx.setAmlAlert("CLEAN_APPROVED");
-            }
+    @GetMapping("/report/html")
+    public String getHighRiskHtmlReport(Model model) {
+        log.info("🎨 Generating HTML Risk Report...");
+        
+        // Define high-risk criteria (e.g., TRANSFER > 200,000)
+        BigDecimal riskThreshold = new BigDecimal("200000");
+        List<Transaction> highRisk = repository.findAll(
+                TransactionSpecification.filterTransactions(null, "TRANSFER", riskThreshold, null, null));
+        
+        model.addAttribute("highRiskTransactions", highRisk);
+        model.addAttribute("totalAudited", repository.count());
+        model.addAttribute("totalRiskAmount", highRisk.stream().map(Transaction::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
+        model.addAttribute("reportId", "R" + System.currentTimeMillis() % 100000);
+        model.addAttribute("generatedAt", LocalDateTime.now());
 
-            Transaction saved = repository.save(tx);
-
-            // Create compliance audit trail
-            AuditLog logEntry = new AuditLog();
-            logEntry.setAction(newStatus.equals("PROCESSED") ? "APPROVE" : "REJECT");
-            logEntry.setTargetId(tx.getReferenceId());
-            logEntry.setOperator("ADMIN_SYSTEM"); 
-            logEntry.setDetails("Manual Audit Action: " + oldStatus + " -> " + newStatus);
-            auditLogRepository.save(logEntry);
-
-            return ResponseEntity.ok(saved);
-        }).orElse(ResponseEntity.notFound().build());
+        return "risk_report"; // Refers to src/main/resources/templates/risk_report.html
     }
 
     /**
-     * Performs a batch status update on multiple transactions.
-     * Ensures atomicity through @Transactional.
+     * 🛡️ [Batch Update] Atomic status update for selected records.
      */
     @Transactional
     @PatchMapping("/batch-status")
+    @ResponseBody
     public ResponseEntity<?> updateBatchStatus(@RequestBody BatchStatusRequest request) {
-        log.info("🚀 [BATCH ACTION] Updating {} transactions to status: {}", 
-                 request.getIds().size(), request.getNewStatus());
-        
         try {
             List<Transaction> transactions = repository.findAllById(request.getIds());
-            
-            transactions.forEach(tx -> {
+            for (Transaction tx : transactions) {
                 String oldStatus = tx.getStatus();
                 tx.setStatus(request.getNewStatus());
-                
-                // Log audit for each transaction in the batch
-                AuditLog logEntry = new AuditLog();
-                logEntry.setAction("BATCH_" + request.getNewStatus());
-                logEntry.setTargetId(tx.getReferenceId());
-                logEntry.setOperator("ADMIN_UI");
-                logEntry.setDetails("Batch change from " + oldStatus + " to " + request.getNewStatus());
-                auditLogRepository.save(logEntry);
-            });
+                if ("PROCESSED".equals(request.getNewStatus())) tx.setAmlAlert("CLEAN_APPROVED");
 
+                AuditLog logEntry = new AuditLog();
+                logEntry.setAction("BATCH_UPDATE");
+                logEntry.setTargetId(tx.getReferenceId());
+                logEntry.setOperator("SYSTEM_ADMIN");
+                logEntry.setDetails("Status change: " + oldStatus + " -> " + request.getNewStatus());
+                auditLogRepository.save(logEntry);
+            }
             repository.saveAll(transactions);
-            return ResponseEntity.ok().build();
-            
+            return ResponseEntity.ok("Batch update completed.");
         } catch (Exception e) {
-            log.error("❌ [BATCH ERROR] Failed to update transactions: ", e);
             return ResponseEntity.internalServerError().body("Batch update failed.");
         }
     }
 
     /**
-     * Generates and exports an Excel report based on current filter.
+     * 📥 [Excel Export] Generates Excel file based on current filters.
      */
     @GetMapping("/export")
-    public ResponseEntity<InputStreamResource> exportReport(@RequestParam(required = false) String filter) {
+    @ResponseBody
+    public ResponseEntity<InputStreamResource> exportFilteredReport(
+            @RequestParam(required = false) String referenceId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) BigDecimal minAmount,
+            @RequestParam(required = false) BigDecimal maxAmount,
+            @RequestParam(required = false) String status) {
+        
         try {
-            List<Transaction> data;
-            
-            if ("risk".equals(filter)) {
-                data = repository.findByAmlAlert("CONFIRMED_FRAUD_PATTERN");
-            } else if ("pending".equals(filter)) {
-                data = repository.findByStatus("PENDING_REVIEW");
-            } else {
-                data = repository.findAll(); 
-            }
-
-            ByteArrayInputStream in = reconService.exportTransactionsToExcel(data);
-            String filename = "Recon_Report_" + (filter != null && !filter.isEmpty() ? filter : "All") + ".xlsx";
+            Specification<Transaction> spec = TransactionSpecification.filterTransactions(
+                    referenceId, type, minAmount, maxAmount, status);
+            List<Transaction> filteredData = repository.findAll(spec);
+            ByteArrayInputStream in = reconService.exportTransactionsToExcel(filteredData);
+            String filename = "Recon_Report_" + System.currentTimeMillis() + ".xlsx";
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + filename)
                     .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
                     .body(new InputStreamResource(in));
-                    
         } catch (Exception e) {
-            log.error("❌ [EXPORT ERROR] Failed to generate report: ", e);
             return ResponseEntity.internalServerError().build();
         }
     }
 
-    /**
-     * DTO for Batch Processing Requests.
-     */
     @Data
     public static class BatchStatusRequest {
         private List<Long> ids;
