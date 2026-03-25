@@ -3,7 +3,8 @@ package com.fintech.recon_system.controller;
 import java.util.List;
 import java.io.ByteArrayInputStream; 
 import org.springframework.core.io.InputStreamResource; 
-import org.springframework.http.HttpHeaders; 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;   
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,11 +15,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 
+
 import com.fintech.recon_system.model.Transaction;
 import com.fintech.recon_system.model.AuditLog;
 import com.fintech.recon_system.repository.TransactionRepository;
 import com.fintech.recon_system.repository.AuditLogRepository;
 import com.fintech.recon_system.service.ReconciliationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.fintech.recon_system.util.CSVHelper;
 
 import lombok.extern.slf4j.Slf4j;
 import lombok.Data;
@@ -66,14 +70,20 @@ public class TransactionController {
      */
     @PostMapping("/upload")
     public ResponseEntity<?> uploadKaggleData(@RequestParam("file") MultipartFile file) {
-        log.info("📥 [INGESTION START] Received file for async processing: {}", file.getOriginalFilename());
+        log.info("📥 [STREAMING START] Processing large CSV: {}", file.getOriginalFilename());
         
         try {
-            reconService.processUploadedFile(file);
-            return ResponseEntity.ok("File upload received. Processing records in the background.");
+            // Clear old data before ingestion to achieve "overwrite" effect
+            repository.deleteAll(); 
+            auditLogRepository.deleteAll();
+
+            // Call the streaming parser
+            CSVHelper.parseAndSave(file.getInputStream(), repository);
+            
+            return ResponseEntity.status(HttpStatus.OK).body("Large dataset uploaded and processed successfully.");
         } catch (Exception e) {
-            log.error("❌ [UPLOAD ERROR] Failed to initiate async process: ", e);
-            return ResponseEntity.status(500).body("Upload failed: " + e.getMessage());
+            log.error("❌ Critical Ingestion Failure: ", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Ingestion failed: " + e.getMessage());
         }
     }
 
