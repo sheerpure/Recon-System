@@ -5,10 +5,26 @@
  * 2. Ingestion: Handles asynchronous streaming uploads for large CSV datasets.
  * 3. Auditing: Supports both single and batch manual audit actions (Approve/Reject).
  * 4. UI States: Manages dynamic visibility of action bars and status messages.
+ * 5. Security: Injects JWT tokens into all outgoing fetch requests.
  */
+
+/**
+ * Retrieves the JWT token from localStorage and formats it for HTTP headers
+ * @returns {Object} Headers object containing Authorization or empty
+ */
+function getAuthHeader() {
+    const token = localStorage.getItem('jwt_token');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     
+    // Check if token exists, if not, redirect to login (basic client-side guard)
+    if (!localStorage.getItem('jwt_token')) {
+        window.location.href = '/login';
+        return;
+    }
+
     // --- 1. DOM Element Selectors ---
     const fileInput = document.getElementById('fileInput');
     const statusMessage = document.getElementById('statusMessage');
@@ -27,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (count > 0) {
             batchActionsBar?.classList.remove('hidden');
-            batchActionsBar?.classList.add('flex'); // Ensure flex layout for alignment
+            batchActionsBar?.classList.add('flex'); 
             if (selectedCountDisplay) selectedCountDisplay.innerText = count;
         } else {
             batchActionsBar?.classList.add('hidden');
@@ -49,7 +65,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /**
      * Event Delegation for individual checkboxes
-     * Monitors changes to any element with the 'tx-checkbox' class
      */
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('tx-checkbox')) {
@@ -65,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
         new Chart(typeCanvas.getContext('2d'), {
             type: 'doughnut',
             data: {
-                labels: window.typeLabels, // Injected via Thymeleaf inline JS
+                labels: window.typeLabels,
                 datasets: [{
                     data: window.typeData,
                     backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
@@ -79,7 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 plugins: {
                     legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
                 },
-                cutout: '75%' // Creates the modern "Ring" look
+                cutout: '75%'
             }
         });
     }
@@ -116,8 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
  */
 
 /**
- * Handles Large-Scale CSV Ingestion via Multipart API
- * @param {HTMLInputElement} input - The file input element
+ * Handles Large-Scale CSV Ingestion via Multipart API with JWT
  */
 async function uploadFile(input) {
     if (!input.files || !input.files[0]) return;
@@ -128,24 +142,30 @@ async function uploadFile(input) {
         return;
     }
 
-    // Provide visual feedback during long-running ingestion
-    renderMessage(`⏳ Processing ${file.name}... Please wait, this may take a moment for large datasets.`, 'success');
+    renderMessage(`⏳ Processing ${file.name}... Please wait.`, 'success');
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
         const response = await fetch('/api/transactions/upload', { 
-            method: 'POST', 
+            method: 'POST',
+            headers: {
+                ...getAuthHeader() // Injects Bearer Token
+            },
             body: formData 
         });
 
+        if (response.status === 403) {
+            renderMessage('🚫 Access Denied: Admin role required.', 'error');
+            return;
+        }
+
         if (response.ok) {
-            renderMessage('✅ Ingestion successful! Refreshing dashboard...', 'success');
+            renderMessage('✅ Ingestion successful!', 'success');
             setTimeout(() => window.location.reload(), 1200);
         } else {
-            const errorText = await response.text();
-            renderMessage(`❌ Upload failed: ${errorText}`, 'error');
+            renderMessage(`❌ Upload failed: ${await response.text()}`, 'error');
         }
     } catch (error) {
         renderMessage(`❌ Network error: ${error.message}`, 'error');
@@ -153,24 +173,30 @@ async function uploadFile(input) {
 }
 
 /**
- * Single Transaction Manual Audit Action
- * @param {number} id - Transaction Database ID
- * @param {string} status - Target status (e.g., PROCESSED, REJECTED)
+ * Single Transaction Manual Audit with JWT
  */
 async function handleAction(id, status) {
     if (!confirm(`Are you sure you want to set this transaction to ${status}?`)) return;
     try {
-        const response = await fetch(`/api/transactions/${id}/status?newStatus=${status}`, { method: 'PATCH' });
+        const response = await fetch(`/api/transactions/${id}/status?newStatus=${status}`, { 
+            method: 'PATCH',
+            headers: { ...getAuthHeader() }
+        });
+
+        if (response.status === 403) {
+            alert('🚫 Access Denied: Admin role required for auditing.');
+            return;
+        }
+
         if (response.ok) window.location.reload();
-        else alert('❌ Action failed. Please check system logs.');
+        else alert('❌ Action failed.');
     } catch (error) {
-        alert('❌ Network error occurred during the audit action.');
+        alert('❌ Network error during audit.');
     }
 }
 
 /**
- * Batch Compliance Audit Action for multiple records
- * @param {string} status - Target status for all selected IDs
+ * Batch Compliance Audit Action with JWT
  */
 async function handleBatchAction(status) {
     const checkedBoxes = document.querySelectorAll('.tx-checkbox:checked');
@@ -182,24 +208,36 @@ async function handleBatchAction(status) {
     try {
         const response = await fetch('/api/transactions/batch-status', {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json',
+                ...getAuthHeader() 
+            },
             body: JSON.stringify({ ids: ids, newStatus: status })
         });
 
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            alert('❌ Batch update failed.');
+        if (response.status === 403) {
+            alert('🚫 Access Denied: Admin role required.');
+            return;
         }
+
+        if (response.ok) window.location.reload();
+        else alert('❌ Batch update failed.');
     } catch (error) {
-        alert('❌ Critical network error during batch processing.');
+        alert('❌ Network error.');
     }
 }
 
 /**
- * Renders dynamic status/error messages on the UI
- * @param {string} text - Message content
- * @param {string} type - 'success' or 'error'
+ * Clears security credentials and redirects to login
+ */
+function handleLogout() {
+    localStorage.removeItem('jwt_token');
+    localStorage.removeItem('username');
+    window.location.href = '/login';
+}
+
+/**
+ * UI Message Renderer
  */
 function renderMessage(text, type) {
     const statusMessage = document.getElementById('statusMessage');
@@ -216,10 +254,15 @@ function renderMessage(text, type) {
 }
 
 /**
- * Expose functions to the Global Window Object
- * This allows HTML inline attributes (onclick/onchange) to access them.
+ * Global Exposure
  */
 window.uploadFile = uploadFile;
 window.handleAction = handleAction;
 window.handleBatchAction = handleBatchAction;
-window.viewHtmlReport = () => window.open('/api/transactions/report/html', '_blank');
+window.handleLogout = handleLogout;
+window.viewHtmlReport = () => {
+    const token = localStorage.getItem('jwt_token');
+    // Note: window.open standard GET doesn't easily support headers. 
+    // Usually handled via a temporary cookie or a specialized download endpoint.
+    window.open(`/api/transactions/report/html?token=${token}`, '_blank');
+};

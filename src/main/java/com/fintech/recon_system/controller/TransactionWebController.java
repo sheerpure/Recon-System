@@ -49,7 +49,7 @@ public class TransactionWebController {
             @RequestParam(defaultValue = "0") int page,
             Model model) {
 
-        // 🚀 Step 1: Sanitize input (Treat empty string as null)
+        // Step 1: Sanitize input (Treat empty string as null)
         String cleanRefId = (refId != null && !refId.trim().isEmpty()) ? refId.trim() : null;
 
         // Step 2: Initialize Pagination (Newest First)

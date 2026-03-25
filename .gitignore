@@ -6,6 +6,19 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+# --- Added for Recon-System ---
+# H2 Database files (If you ever use file-based mode instead of memory)
+*.mv.db
+*.trace.db
+
+# Log files
+*.log
+logs/
+
+# MacOS System files
+.DS_Store
+
+# --- Original Sections ---
 ### STS ###
 .apt_generated
 .classpath
