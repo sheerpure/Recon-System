@@ -3,9 +3,8 @@
  * * CORE FUNCTIONALITIES:
  * 1. Charting: Visualizes transaction types and risk distributions using Chart.js.
  * 2. Ingestion: Handles asynchronous streaming uploads for large CSV datasets.
- * 3. Auditing: Supports both single and batch manual audit actions (Approve/Reject).
- * 4. UI States: Manages dynamic visibility of action bars and status messages.
- * 5. Security: Injects JWT tokens into all outgoing fetch requests.
+ * 3. Auditing: Supports both single and batch manual audit actions.
+ * 4. Security: Injects JWT tokens into all outgoing fetch requests and URL redirects.
  */
 
 /**
@@ -17,26 +16,33 @@ function getAuthHeader() {
     return token ? { 'Authorization': `Bearer ${token}` } : {};
 }
 
+/**
+ * --- 1. DOM INITIALIZATION ---
+ * Runs when the page content is fully loaded.
+ */
 document.addEventListener('DOMContentLoaded', () => {
     
-    // Check if token exists, if not, redirect to login (basic client-side guard)
-    if (!localStorage.getItem('jwt_token')) {
+    // Security Guard: Check if token exists
+    const token = localStorage.getItem('jwt_token');
+    const username = localStorage.getItem('username');
+
+    if (!token) {
+        console.warn("[Security] No token found. Redirecting to login...");
         window.location.href = '/login';
         return;
     }
 
-    // --- 1. DOM Element Selectors ---
-    const fileInput = document.getElementById('fileInput');
-    const statusMessage = document.getElementById('statusMessage');
+    // Update the UI with the real username from localStorage
+    const userDisplay = document.getElementById('displayUsername');
+    if (userDisplay && username) {
+        userDisplay.innerText = username;
+    }
+
+    // --- 2. Batch Selection UI Logic ---
     const selectAllBox = document.getElementById('selectAll');
     const batchActionsBar = document.getElementById('batchActions');
     const selectedCountDisplay = document.getElementById('selectedCount');
 
-    // --- 2. Batch Selection & UI Logic ---
-    
-    /**
-     * Updates the visibility and count of the Batch Actions floating bar
-     */
     const updateBatchUI = () => {
         const checkedBoxes = document.querySelectorAll('.tx-checkbox:checked');
         const count = checkedBoxes.length;
@@ -51,9 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    /**
-     * Global "Select All" checkbox toggle logic
-     */
     if (selectAllBox) {
         selectAllBox.addEventListener('change', (e) => {
             document.querySelectorAll('.tx-checkbox').forEach(cb => {
@@ -63,18 +66,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    /**
-     * Event Delegation for individual checkboxes
-     */
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('tx-checkbox')) {
             updateBatchUI();
         }
     });
 
-    // --- 3. Chart.js Visualization Logic ---
-
-    // Doughnut Chart: Transaction Type Breakdown
+    // --- 3. Chart.js Visualization ---
     const typeCanvas = document.getElementById('typePieChart');
     if (typeCanvas && window.typeLabels && window.typeLabels.length > 0) {
         new Chart(typeCanvas.getContext('2d'), {
@@ -91,15 +89,12 @@ document.addEventListener('DOMContentLoaded', () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
-                },
-                cutout: '75%'
+                cutout: '75%',
+                plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } } }
             }
         });
     }
 
-    // Bar Chart: Risk Distribution Status
     const riskCanvas = document.getElementById('riskBarChart');
     if (riskCanvas && window.riskLabels && window.riskLabels.length > 0) {
         new Chart(riskCanvas.getContext('2d'), {
@@ -127,142 +122,114 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * --- 4. Global Action Handlers ---
+ * --- 4. GLOBAL ACTION HANDLERS ---
+ * Defined outside DOMContentLoaded to ensure global availability.
  */
 
-/**
- * Handles Large-Scale CSV Ingestion via Multipart API with JWT
- */
 async function uploadFile(input) {
     if (!input.files || !input.files[0]) return;
-    
     const file = input.files[0];
-    if (!file.name.endsWith('.csv')) {
-        renderMessage('❌ Error: Only .csv files are supported.', 'error');
-        return;
-    }
-
-    renderMessage(`⏳ Processing ${file.name}... Please wait.`, 'success');
-
+    
+    renderMessage(`⏳ Processing ${file.name}...`, 'success');
     const formData = new FormData();
     formData.append('file', file);
 
     try {
         const response = await fetch('/api/transactions/upload', { 
             method: 'POST',
-            headers: {
-                ...getAuthHeader() // Injects Bearer Token
-            },
+            headers: { ...getAuthHeader() },
             body: formData 
         });
 
-        if (response.status === 403) {
-            renderMessage('🚫 Access Denied: Admin role required.', 'error');
-            return;
-        }
-
+        if (response.status === 401) { handleLogout(); return; }
         if (response.ok) {
-            renderMessage('✅ Ingestion successful!', 'success');
-            setTimeout(() => window.location.reload(), 1200);
+            renderMessage('✅ Upload successful!', 'success');
+            setTimeout(() => window.location.reload(), 1000);
         } else {
-            renderMessage(`❌ Upload failed: ${await response.text()}`, 'error');
+            renderMessage(`❌ Error: ${await response.text()}`, 'error');
         }
     } catch (error) {
-        renderMessage(`❌ Network error: ${error.message}`, 'error');
+        renderMessage('❌ Network error during upload.', 'error');
     }
 }
 
-/**
- * Single Transaction Manual Audit with JWT
- */
 async function handleAction(id, status) {
-    if (!confirm(`Are you sure you want to set this transaction to ${status}?`)) return;
+    if (!confirm(`Confirm ${status} for this transaction?`)) return;
     try {
         const response = await fetch(`/api/transactions/${id}/status?newStatus=${status}`, { 
             method: 'PATCH',
             headers: { ...getAuthHeader() }
         });
-
-        if (response.status === 403) {
-            alert('🚫 Access Denied: Admin role required for auditing.');
-            return;
-        }
-
+        if (response.status === 401) { handleLogout(); return; }
         if (response.ok) window.location.reload();
-        else alert('❌ Action failed.');
     } catch (error) {
-        alert('❌ Network error during audit.');
+        alert('❌ Error performing action.');
     }
 }
 
-/**
- * Batch Compliance Audit Action with JWT
- */
 async function handleBatchAction(status) {
     const checkedBoxes = document.querySelectorAll('.tx-checkbox:checked');
     const ids = Array.from(checkedBoxes).map(cb => parseInt(cb.value));
 
     if (ids.length === 0) return;
-    if (!confirm(`Apply [${status}] to ${ids.length} selected records?`)) return;
+    if (!confirm(`Apply [${status}] to ${ids.length} records?`)) return;
 
     try {
         const response = await fetch('/api/transactions/batch-status', {
             method: 'PATCH',
-            headers: { 
-                'Content-Type': 'application/json',
-                ...getAuthHeader() 
-            },
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
             body: JSON.stringify({ ids: ids, newStatus: status })
         });
-
-        if (response.status === 403) {
-            alert('🚫 Access Denied: Admin role required.');
-            return;
-        }
-
+        if (response.status === 401) { handleLogout(); return; }
         if (response.ok) window.location.reload();
-        else alert('❌ Batch update failed.');
     } catch (error) {
-        alert('❌ Network error.');
+        alert('❌ Batch update failed.');
     }
 }
 
-/**
- * Clears security credentials and redirects to login
- */
+function exportFilteredReport() {
+    const token = localStorage.getItem('jwt_token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const params = urlParams.toString(); 
+    const exportUrl = `/api/transactions/export?${params}${params ? '&' : ''}token=${token}`;
+    
+    console.log("[Export] Initiating download...");
+    window.location.href = exportUrl;
+}
+
+function viewHtmlReport() {
+    const token = localStorage.getItem('jwt_token');
+    if (!token) {
+        window.location.href = '/login';
+        return;
+    }
+    window.open(`/api/transactions/report/html?token=${token}`, '_blank');
+}
+
 function handleLogout() {
     localStorage.removeItem('jwt_token');
     localStorage.removeItem('username');
     window.location.href = '/login';
 }
 
-/**
- * UI Message Renderer
- */
 function renderMessage(text, type) {
     const statusMessage = document.getElementById('statusMessage');
     if (!statusMessage) return;
     statusMessage.innerText = text;
-    statusMessage.classList.remove('hidden', 'bg-red-50', 'text-red-700', 'bg-emerald-50', 'text-emerald-700');
-    statusMessage.classList.add('block', 'border', 'p-4', 'rounded-xl', 'mb-6');
-    
-    if (type === 'error') {
-        statusMessage.classList.add('bg-red-50', 'text-red-700', 'border-red-100');
-    } else {
-        statusMessage.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-100');
-    }
+    statusMessage.className = `block border p-4 rounded-xl mb-6 ${type === 'error' ? 'bg-red-50 text-red-700 border-red-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`;
 }
 
 /**
- * Global Exposure
+ * --- 5. GLOBAL EXPOSURE ---
+ * Attaching functions to the window object for HTML onclick access.
  */
 window.uploadFile = uploadFile;
 window.handleAction = handleAction;
 window.handleBatchAction = handleBatchAction;
 window.handleLogout = handleLogout;
-window.viewHtmlReport = () => {
-    const token = localStorage.getItem('jwt_token');
-    // Note: window.open standard GET doesn't easily support headers. 
-    // Usually handled via a temporary cookie or a specialized download endpoint.
-    window.open(`/api/transactions/report/html?token=${token}`, '_blank');
-};
+window.exportFilteredReport = exportFilteredReport;
+window.viewHtmlReport = viewHtmlReport;

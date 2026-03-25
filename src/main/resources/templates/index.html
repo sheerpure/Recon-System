@@ -74,12 +74,14 @@
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
-                <a th:href="@{/api/transactions/export(filter=${currentFilter}, refId=${refId}, minAmount=${minAmount}, maxAmount=${maxAmount})}" 
-                   class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center">
+                <button type="button" 
+                        onclick="exportFilteredReport()" 
+                        class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all shadow-sm flex items-center">
                     <span class="mr-2">📊</span> Export Excel
-                </a>
+                </button>
 
-                <button onclick="viewHtmlReport()" 
+                <button type="button" 
+                        onclick="viewHtmlReport()" 
                         class="bg-indigo-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-md flex items-center">
                     <span class="mr-2">📄</span> View Risk Report
                 </button>
@@ -101,14 +103,21 @@
                         </svg>
                     </button>
 
-                    <button type="button" 
-                            onclick="handleLogout()" 
-                            class="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-slate-100 bg-white shadow-sm flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                </svg>
+                    <div class="flex items-center gap-4">
+                        <div class="hidden sm:flex flex-col items-end border-r border-slate-200 pr-4">
+                            <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Operator</span>
+                            <span id="displayUsername" class="text-xs font-black text-slate-700">Guest</span>
+                        </div>
+
+                        <button type="button" 
+                                onclick="handleLogout()" 
+                                class="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all border border-slate-100 bg-white shadow-sm flex items-center gap-2 group">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transition-transform group-hover:-translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
                             <span class="text-xs font-bold">Logout</span>
-                    </button>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
