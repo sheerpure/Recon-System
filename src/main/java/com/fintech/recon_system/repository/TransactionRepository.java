@@ -29,6 +29,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
 
     // 1. Basic Count Methods
     long countByAmlAlert(String amlAlert);
+    long countByAmlAlertNot(String amlAlert);
     
     long countByStatus(String status);
 
@@ -43,11 +44,13 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
 
     // 4. Pagination Support
     Page<Transaction> findByAmlAlert(String amlAlert, Pageable pageable);
+    Page<Transaction> findByAmlAlertNot(String amlAlert, Pageable pageable);
     
     Page<Transaction> findByStatus(String status, Pageable pageable);
+    List<Transaction> findByAmlAlertNot(String amlAlert);
 
     /**
-     * 🚀 Advanced Dynamic Search
+     * Advanced Dynamic Search
      * Handles multi-criteria filtering for the dashboard.
      */
         @Query("SELECT t FROM Transaction t WHERE " +
@@ -55,12 +58,12 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long>,
         "(:min IS NULL OR t.amount >= :min) AND " +
         "(:max IS NULL OR t.amount <= :max) AND " +
         "( :filter IS NULL OR :filter = '' OR " + 
-        "  (:filter = 'risk' AND t.amlAlert = 'CONFIRMED_FRAUD_PATTERN') OR " +
+        "  (:filter = 'risk' AND t.amlAlert <> 'CLEAN') OR " + 
         "  (:filter = 'pending' AND t.status = 'PENDING_REVIEW') )")
         Page<Transaction> advancedSearch(
-        @Param("refId") String refId, 
-        @Param("min") BigDecimal min, 
-        @Param("max") BigDecimal max, 
-        @Param("filter") String filter, 
-        Pageable pageable);
+            @Param("refId") String refId, 
+            @Param("min") BigDecimal min, 
+            @Param("max") BigDecimal max, 
+            @Param("filter") String filter, 
+            Pageable pageable);
 }

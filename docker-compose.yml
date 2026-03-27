@@ -1,0 +1,11 @@
+version: '3.8'
+services:
+  recon-system:
+    build: .
+    container_name: recon-app
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - JWT_SECRET=YourProfessionalSecureSecretKey2026 
+    restart: always

@@ -1,7 +1,7 @@
 package com.fintech.recon_system.security.service;
 
-import com.fintech.recon_system.security.model.User;
-import com.fintech.recon_system.security.repository.UserRepository;
+import com.fintech.recon_system.model.User;
+import com.fintech.recon_system.repository.UserRepository;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.stereotype.Service;
@@ -23,8 +23,13 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
         return new org.springframework.security.core.userdetails.User(
                 user.getUsername(),
-                user.getPassword(),
-                user.getRoles().stream().map(SimpleGrantedAuthority::new).collect(Collectors.toList())
+            user.getPassword(),
+            user.getRoles().stream()
+                .map(role -> {
+                    String roleName = role.startsWith("ROLE_") ? role : "ROLE_" + role;
+                    return new SimpleGrantedAuthority(roleName);
+                })
+                .collect(Collectors.toList())
         );
     }
 }

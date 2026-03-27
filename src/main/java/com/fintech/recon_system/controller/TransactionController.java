@@ -33,11 +33,11 @@ import lombok.extern.slf4j.Slf4j;
 import lombok.Data;
 
 /**
- * Enhanced Controller for Financial Transactions.
- * Supports Dynamic Search, Batch Processing, Excel Export, and HTML Risk Reporting.
+ * TransactionController: Handles all financial data operations.
+ * Supports file ingestion, individual/batch auditing, and automated reporting.
  */
 @Slf4j
-@Controller // Changed to @Controller to support HTML view rendering
+@Controller 
 @RequestMapping("/api/transactions")
 @CrossOrigin(origins = "*")
 public class TransactionController {
@@ -55,10 +55,10 @@ public class TransactionController {
     }
 
     /**
-     *[Advanced Search] Returns JSON data with pagination.
+     * [Search] Returns paginated transaction data.
      */
     @GetMapping
-    @ResponseBody // Must use @ResponseBody because the class is now @Controller
+    @ResponseBody 
     public Page<Transaction> getFilteredTransactions(
             @RequestParam(required = false) String referenceId,
             @RequestParam(required = false) String type,
@@ -76,7 +76,7 @@ public class TransactionController {
     }
 
     /**
-     * [CSV Upload] Processes large files in streaming mode.
+     * [Upload] Ingests CSV datasets and resets current state.
      */
     @PostMapping("/upload")
     @ResponseBody
@@ -93,25 +93,37 @@ public class TransactionController {
     }
 
     /**
-     * [HTML Risk Report] Renders a professional web-based audit report.
-     * Accessible via: GET /api/transactions/report/html
+     * 🛡️ [Single Update] Updates status for a specific record.
+     * Essential for the 'check' and 'cross' buttons in the dashboard.
      */
-    @GetMapping("/report/html")
-    public String getHighRiskHtmlReport(Model model) {
-        log.info("🎨 Generating HTML Risk Report...");
-        
-        // Define high-risk criteria (e.g., TRANSFER > 200,000)
-        BigDecimal riskThreshold = new BigDecimal("200000");
-        List<Transaction> highRisk = repository.findAll(
-                TransactionSpecification.filterTransactions(null, "TRANSFER", riskThreshold, null, null));
-        
-        model.addAttribute("highRiskTransactions", highRisk);
-        model.addAttribute("totalAudited", repository.count());
-        model.addAttribute("totalRiskAmount", highRisk.stream().map(Transaction::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add));
-        model.addAttribute("reportId", "R" + System.currentTimeMillis() % 100000);
-        model.addAttribute("generatedAt", LocalDateTime.now());
+    @Transactional
+    @PatchMapping("/{id}/status")
+    @ResponseBody
+    public ResponseEntity<?> updateSingleStatus(
+            @PathVariable Long id, 
+            @RequestParam("status") String status) {
+        try {
+            Transaction tx = repository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Transaction not found"));
 
-        return "risk_report"; // Refers to src/main/resources/templates/risk_report.html
+            String oldStatus = tx.getStatus();
+            tx.setStatus(status);
+            if ("PROCESSED".equals(status)) {
+                tx.setAmlAlert(null); 
+            }
+
+            AuditLog logEntry = new AuditLog();
+            logEntry.setAction("SINGLE_UPDATE");
+            logEntry.setTargetId(tx.getReferenceId());
+            logEntry.setOperator("SYSTEM_ADMIN");
+            logEntry.setDetails("Audit action: " + oldStatus + " -> " + status);
+            auditLogRepository.save(logEntry);
+
+            repository.save(tx);
+            return ResponseEntity.ok("Transaction updated.");
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Update failed.");
+        }
     }
 
     /**
@@ -126,13 +138,15 @@ public class TransactionController {
             for (Transaction tx : transactions) {
                 String oldStatus = tx.getStatus();
                 tx.setStatus(request.getNewStatus());
-                if ("PROCESSED".equals(request.getNewStatus())) tx.setAmlAlert("CLEAN_APPROVED");
+                if ("PROCESSED".equals(request.getNewStatus())) {
+                    tx.setAmlAlert(null);
+                }
 
                 AuditLog logEntry = new AuditLog();
                 logEntry.setAction("BATCH_UPDATE");
                 logEntry.setTargetId(tx.getReferenceId());
                 logEntry.setOperator("SYSTEM_ADMIN");
-                logEntry.setDetails("Status change: " + oldStatus + " -> " + request.getNewStatus());
+                logEntry.setDetails("Batch audit: " + oldStatus + " -> " + request.getNewStatus());
                 auditLogRepository.save(logEntry);
             }
             repository.saveAll(transactions);
@@ -143,7 +157,7 @@ public class TransactionController {
     }
 
     /**
-     * 📥 [Excel Export] Generates Excel file based on current filters.
+     * [Export] Generates Excel reports.
      */
     @GetMapping("/export")
     @ResponseBody

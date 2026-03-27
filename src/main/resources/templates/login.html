@@ -46,54 +46,42 @@
         </div>
     </div>
 
-    <script th:inline="javascript">
-        /**
-         * Wait for DOM content to be fully loaded before attaching events.
-         * This prevents 'null' reference errors on the loginForm element.
-         */
-        document.addEventListener('DOMContentLoaded', () => {
-            const loginForm = document.getElementById('loginForm');
-            const errorDiv = document.getElementById('loginError');
+    <script>
+        async function handleLogin(event) {
+            event.preventDefault(); 
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const errorMessage = document.getElementById('errorMessage');
 
-            if (loginForm) {
-                loginForm.addEventListener('submit', async (e) => {
-                    // 1. Prevent the browser from performing a traditional page refresh/POST
-                    e.preventDefault();
-                    
-                    const username = document.getElementById('username').value;
-                    const password = document.getElementById('password').value;
-
-                    console.log(`[Auth] Attempting login for user: ${username}`);
-
-                    try {
-                        // 2. Perform Async AJAX request to the JWT Auth Controller
-                        const response = await fetch('/api/auth/login', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ username, password })
-                        });
-
-                        if (response.ok) {
-                            const data = await response.json();
-                            console.log("[Auth] Token received successfully.");
-
-                            // 3. Persist the JWT token to browser's LocalStorage for future API calls
-                            localStorage.setItem('jwt_token', data.token);
-                            localStorage.setItem('username', username);
-
-                            // 4. Redirect the user to the protected Dashboard
-                            window.location.href = '/';
-                        } else {
-                            console.warn("[Auth] Login failed. Invalid credentials.");
-                            errorDiv.classList.remove('hidden');
-                        }
-                    } catch (err) {
-                        console.error('[Auth] Network error or server unreachable:', err);
-                        alert("System Error: Unable to connect to Authentication Service.");
-                    }
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
                 });
-            } else {
-                console.error("[Auth] Fatal: loginForm element not found in DOM.");
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    localStorage.setItem('jwt_token', data.token);
+                    localStorage.setItem('username', username);
+                    
+                    window.location.href = '/';
+                } else {
+                    errorMessage.innerText = "Invalid username or password";
+                    errorMessage.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error("Login error:", error);
+                alert("System Error: Unable to connect to Authentication Service.");
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.querySelector('form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleLogin);
             }
         });
     </script>

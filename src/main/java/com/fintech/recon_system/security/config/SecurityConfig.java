@@ -15,7 +15,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 /**
  * SecurityConfig: The central security nerve center for the Recon-System.
- * This class defines how users are authenticated and which resources are protected.
+ * Configures JWT-based stateless authentication and RBAC for sensitive operations.
  */
 @Configuration
 public class SecurityConfig {
@@ -27,8 +27,7 @@ public class SecurityConfig {
     }
 
     /**
-     * PasswordEncoder bean using BCrypt hashing algorithm.
-     * Ensures all passwords stored in the database are salted and hashed for security.
+     * Password encoder bean used for hashing and validating passwords.
      */
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -36,8 +35,7 @@ public class SecurityConfig {
     }
 
     /**
-     * AuthenticationManager bean: Coordinates the authentication process.
-     * Required by AuthController to verify user credentials during login.
+     * Expose AuthenticationManager for AuthController to perform login.
      */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
@@ -45,51 +43,47 @@ public class SecurityConfig {
     }
 
     /**
-     * SecurityFilterChain bean: Defines the security filter stack.
+     * Configures the main security filter chain.
      */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        // 1. Disable CSRF (Cross-Site Request Forgery) protection as we use Stateless JWTs
+        // 1. Disable CSRF (Stateless JWT architecture)
         http.csrf(csrf -> csrf.disable())
             
-            // 2. Enforce Stateless Session Policy (No server-side sessions/JSESSIONID)
+            // 2. Set Session Management to Stateless
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             
-            // 3. Define Endpoint Access Control Rules
+            // 3. Define Authorization Rules
             .authorizeHttpRequests(auth -> auth
-                /**
-                 * ALLOW LIST:
-                 * - "/" and "/login": Essential for the browser to load the entry pages.
-                 * - "/api/auth/**": Used for the login/token generation endpoint.
-                 * - "/css/**", "/js/**", "/images/**": Static assets needed for UI rendering.
-                 */
-                .requestMatchers("/", "/login", "/api/auth/**", "/css/**", "/js/**", "/images/**").permitAll()
+                // Allow public access to the landing page, login, and static assets
+                .requestMatchers("/", "/login", "/api/auth/**", "/css/**", "/js/**", "/images/**", "/h2-console/**").permitAll()
                 
-                // RBAC (Role-Based Access Control): Only ADMINs can upload or perform batch audits
-                .requestMatchers("/api/transactions/upload/**").hasRole("ADMIN")
-                .requestMatchers("/api/transactions/batch-status").hasRole("ADMIN")
+                // Explicitly protect the high-risk transaction API with ADMIN role
+                .requestMatchers("/api/transactions/**").hasRole("ADMIN")
                 
-                // PROTECTED DATA: All other API calls require a valid JWT token
+                // Any other generic request requires simple authentication
                 .anyRequest().authenticated()
             )
 
-            // 4. Custom Global Exception Handling
+            // 4. Enable Frame Options for H2-Console (SameOrigin only)
+            .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
+
+            // 5. Intelligent Exception Handling
             .exceptionHandling(ex -> ex
                 .authenticationEntryPoint((request, response, authException) -> {
-                    /**
-                     * Intelligent Redirection:
-                     * - If a Browser User hits a protected page without a token, redirect to /login.
-                     * - If an API Client (like Thunder Client) fails auth, return 401 Unauthorized.
-                     */
-                    if (!request.getRequestURI().startsWith("/api/")) {
-                        response.sendRedirect("/login");
+                    String uri = request.getRequestURI();
+                    
+                    if (uri.startsWith("/api/")) {
+                        // Return 401 status code for AJAX calls to let JS handle the error
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized API Access");
                     } else {
-                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized");
+                        // Redirect browser users to the login page for normal navigation
+                        response.sendRedirect("/login");
                     }
                 })
             );
 
-        // 5. JWT Filter Injection: Apply our custom filter before the standard authentication filter
+        // 6. Add our custom JWT Filter before the standard UsernamePassword filter
         http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
